@@ -1,17 +1,19 @@
 package surfstore;
 
 import java.io.File;
+import java.io.UnsupportedEncodingException;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
 
+import com.google.protobuf.ByteString;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import net.sourceforge.argparse4j.ArgumentParsers;
 import net.sourceforge.argparse4j.inf.ArgumentParser;
 import net.sourceforge.argparse4j.inf.ArgumentParserException;
 import net.sourceforge.argparse4j.inf.Namespace;
-import surfstore.SurfStoreBasic.Empty;
-
+import surfstore.SurfStoreBasic.*;
+import surfstore.SurfStoreBasic.Block.*;
 
 public final class Client {
     private static final Logger logger = Logger.getLogger(Client.class.getName());
@@ -40,16 +42,49 @@ public final class Client {
         metadataChannel.shutdown().awaitTermination(5, TimeUnit.SECONDS);
         blockChannel.shutdown().awaitTermination(5, TimeUnit.SECONDS);
     }
-    
+    private static Block stringToBlock(String s){
+        Builder builder = Block.newBuilder();
+
+        try {
+            builder.setData(ByteString.copyFrom(s, "UTF-8"));
+        }catch (UnsupportedEncodingException e){
+            throw new RuntimeException(e);
+        }
+
+//        builder.setHash(HashU);
+        return builder.build();
+    }
+    private void ensure(boolean b) {
+        if (!b){
+            throw new RuntimeException("Assertion failed!");
+        }
+    }
+
 	private void go() {
 		metadataStub.ping(Empty.newBuilder().build());
         logger.info("Successfully pinged the Metadata server");
         
         blockStub.ping(Empty.newBuilder().build());
         logger.info("Successfully pinged the Blockstore server");
-        
+
         // TODO: Implement your client here
-	}
+	    Block b1 = stringToBlock("block_01");
+	    Block b2 = stringToBlock("block_02");
+
+	    ensure (!blockStub.hasBlock(b1).getAnswer());
+	    ensure(!blockStub.hasBlock(b2).getAnswer());
+
+	    blockStub.storeBlock(b1);
+        ensure(blockStub.hasBlock(b1).getAnswer());
+
+        blockStub.storeBlock(b2);
+        ensure(blockStub.hasBlock(b2).getAnswer());
+
+        Block b1prime = blockStub.getBlock(b1);
+        ensure(b1prime.getHash().equals(b1.getHash()));
+        ensure(b1.getData().equals(b1.getData()));
+
+    }
 
 	/*
 	 * TODO: Add command line handling here
