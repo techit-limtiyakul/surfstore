@@ -2,6 +2,9 @@ package surfstore;
 
 import java.io.File;
 import java.io.UnsupportedEncodingException;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.Base64;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
 
@@ -51,13 +54,25 @@ public final class Client {
             throw new RuntimeException(e);
         }
 
-        builder.setHash("");
+        builder.setHash(toSHA256(s.getBytes()));
         return builder.build();
     }
     private void ensure(boolean b) {
         if (!b){
             throw new RuntimeException("Assertion failed!");
         }
+    }
+
+    private static String toSHA256(byte[] data){
+        MessageDigest digest = null;
+        try{
+            digest = MessageDigest.getInstance("SHA-256");
+        }catch (NoSuchAlgorithmException e){
+            e.printStackTrace();
+            System.exit(2);
+        }
+        byte[] hash = digest.digest(data);
+        return Base64.getEncoder().encodeToString(hash);
     }
 
 	private void go() {
