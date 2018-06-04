@@ -51,7 +51,7 @@ public final class Client {
             throw new RuntimeException(e);
         }
 
-//        builder.setHash(HashU);
+        builder.setHash("");
         return builder.build();
     }
     private void ensure(boolean b) {
@@ -61,8 +61,8 @@ public final class Client {
     }
 
 	private void go() {
-		metadataStub.ping(Empty.newBuilder().build());
-        logger.info("Successfully pinged the Metadata server");
+//		metadataStub.ping(Empty.newBuilder().build());
+//        logger.info("Successfully pinged the Metadata server");
         
         blockStub.ping(Empty.newBuilder().build());
         logger.info("Successfully pinged the Blockstore server");
