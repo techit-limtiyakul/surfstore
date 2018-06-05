@@ -117,11 +117,6 @@ public final class MetadataStore {
         server.blockUntilShutdown();
     }
 
-	private static void add(BlockStoreBlockingStub blockStoreStub, String value) {
-		surfstore.SurfStoreBasic.Block.Builder data = Block.newBuilder().setHash(value).setData(ByteString.copyFrom("ss", Charset.forName("UTF-8")));
-		blockStoreStub.storeBlock(data.build());
-	}
-
     static class MetadataStoreImpl extends MetadataStoreGrpc.MetadataStoreImplBase {
     		private Map<String, FileInfo> fileInfos;
     		private BlockStoreBlockingStub blockStoreStub;
