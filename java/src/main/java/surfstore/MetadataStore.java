@@ -51,7 +51,7 @@ public final class MetadataStore {
 
 	}
 
-	private void start(int port, int numThreads) throws IOException {
+	protected void start(int port, int numThreads) throws IOException {
         server = ServerBuilder.forPort(port)
                 .addService(new MetadataStoreImpl(this.blockStub))
                 .executor(Executors.newFixedThreadPool(numThreads))
@@ -68,13 +68,13 @@ public final class MetadataStore {
         });
     }
 
-    private void stop() {
+    protected void stop() {
         if (server != null) {
             server.shutdown();
         }
     }
 
-    private void blockUntilShutdown() throws InterruptedException {
+    protected void blockUntilShutdown() throws InterruptedException {
         if (server != null) {
             server.awaitTermination();
         }
