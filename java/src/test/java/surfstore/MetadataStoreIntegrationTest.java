@@ -103,7 +103,7 @@ class MetadataStoreIntegrationTest {
 		
 		assertEquals(1, result2.getCurrentVersion());
 	}
-	
+
 	@Test
 	void testModifyFile() throws Exception {
 		//assume creating file works properly

@@ -83,7 +83,7 @@ public final class Client {
     private void callGetVersion(String fileName){
         FileInfo localFile = FileInfo.newBuilder().setFilename(fileName).build();
         FileInfo remoteFile = metadataStub.getVersion(localFile);
-        logger.info(remoteFile.getVersion()+"");
+        System.out.println(remoteFile.getVersion()+"");
     }
 
     private void callUpload(String fileName){
@@ -139,7 +139,7 @@ public final class Client {
                     Block b = stringToBlock(hash);
                     ensure(blockStub.hasBlock(b).getAnswer());
                     fos.write(blockStub.getBlock(b).getData().toByteArray());
-                    logger.info(System.getProperty("user.dir") + fileName);
+                    System.out.println(System.getProperty("user.dir") + fileName);
                 }
             } catch (IOException e){
                 logger.severe("Caught IOException: " + e.getMessage());
@@ -154,7 +154,9 @@ public final class Client {
         FileInfo remoteFile = metadataStub.getVersion(localFileBuilder.build());
 
         localFileBuilder.setVersion(remoteFile.getVersion() + 1);
-        ensure(metadataStub.modifyFile(localFileBuilder.build()).getResultValue() == 1);
+        WriteResult deleteResult = metadataStub.modifyFile(localFileBuilder.build());
+        ensure(deleteResult.getResultValue() == 1);
+        System.out.println("OK");
 
     }
 
@@ -166,10 +168,7 @@ public final class Client {
         logger.info("Successfully pinged the Blockstore server");
 
 
-//        logger.info("Getting file info: "+fileName+", version:" + remoteFile.getVersion());
-
-
-        if(method.equals("getVersion")){
+        if(method.equals("getversion")){
             callGetVersion(fileName);
         }else if(method.equals("upload")){
             callUpload(fileName);
@@ -224,7 +223,6 @@ public final class Client {
             throw new RuntimeException("Argument parsing failed");
         }
 
-        System.out.println(c_args.getString("method"));
         File configf = new File(c_args.getString("config_file"));
         String fileName = c_args.getString("path_to_file");
         String method = c_args.getString("method");
@@ -234,7 +232,7 @@ public final class Client {
         Client client = new Client(config);
         
         try {
-        	client.go(method, fileName);
+        	client.go(method.toLowerCase(), fileName);
         } finally {
             client.shutdown();
         }
