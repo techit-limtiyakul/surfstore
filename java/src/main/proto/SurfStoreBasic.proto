@@ -69,9 +69,18 @@ service MetadataStore {
 
     // YOU CAN INSERT ADDITIONAL RPC CALLS HERE TO IMPLEMENT PART 2
     // OF THE PROJECT, BUT PLEASE DON'T MODIFY THE ABOVE CALLS/ARGUMENTS
+
+    // Leader sends AppendLog with empty log_content to signal its heartbeat
+    // Leader maintains a list of last index of each follower's log.
+    // When a new modification comes in, it sends AppendLog rpc with content body containing all logs that are
+    // missing for a particular follower
+    rpc AppendLog(LogMessage) returns (LogAnswer) {}
+
+    // When leader receives more than half of successful LogAnswer from followers, it sends out CommitLog rpc
+    rpc CommitLog(CommitMessage) returns (Empty) {}
 }
 
-service BlockStore {
+service BlockStore{
     // A simple ping. Does not return anything.
     // Use the status code of the RPC to check for success.
     rpc Ping (Empty) returns (Empty) {}
@@ -127,4 +136,20 @@ message SimpleAnswer {
 
 message NodeList {
     repeated int32 nodelist = 1;
+}
+
+// LogMessage contains the latest index of log from Leader
+message LogMessage{
+    int32 log_index = 1;
+    repeated FileInfo log_content = 2;
+}
+
+// LogAnswer is the response from follower to leader after it receives AppendLog rpc
+// Follower replies back with its most recent log index
+message LogAnswer{
+    int32 most_recent_log = 1;
+}
+
+message CommitMessage{
+    int32 commit_index = 1;
 }

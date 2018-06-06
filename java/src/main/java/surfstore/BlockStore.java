@@ -18,8 +18,6 @@ import net.sourceforge.argparse4j.inf.Namespace;
 import surfstore.SurfStoreBasic.*;
 import surfstore.SurfStoreBasic.Block.*;
 
-import static io.grpc.stub.ServerCalls.asyncUnimplementedUnaryCall;
-
 
 public final class BlockStore {
     private static final Logger logger = Logger.getLogger(BlockStore.class.getName());
