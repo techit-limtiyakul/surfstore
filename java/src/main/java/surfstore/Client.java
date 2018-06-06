@@ -169,7 +169,7 @@ public final class Client {
 //        logger.info("Getting file info: "+fileName+", version:" + remoteFile.getVersion());
 
 
-        if(method.equals("getversion")){
+        if(method.equals("getVersion")){
             callGetVersion(fileName);
         }else if(method.equals("upload")){
             callUpload(fileName);

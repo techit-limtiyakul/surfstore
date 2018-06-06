@@ -130,8 +130,8 @@ public final class MetadataStore {
 			@Override
 	    	public void ping(Empty req, final StreamObserver<Empty> responseObserver) {
 	    		Empty response = Empty.newBuilder().build();
-//	    		responseObserver.onNext(response);
-//	    		responseObserver.onCompleted();
+	    		responseObserver.onNext(response);
+	    		responseObserver.onCompleted();
 	    	}
 	    	
         /* (non-Javadoc)
