@@ -266,7 +266,7 @@ public final class MetadataStore {
 				builder.setResult(WriteResult.Result.OK);
 				builder.setCurrentVersion(newVersion);
 				
-				FileInfo log = FileInfo.newBuilder().setFilename(request.getFilename()).setVersion(newVersion).build();
+				FileInfo log = FileInfo.newBuilder().setFilename(request.getFilename()).setVersion(newVersion).addBlocklist("0").build();
 				logList.add(log);
 				commitLog();
 			}
@@ -311,14 +311,16 @@ public final class MetadataStore {
 		public void crash(Empty request, StreamObserver<Empty> responseObserver) {
 			// TODO Auto-generated method stub
 			this.isUp = false;
-			super.crash(request, responseObserver);
+			responseObserver.onNext(Empty.newBuilder().build());
+			responseObserver.onCompleted();
 		}
 
 		@Override
 		public void restore(Empty request, StreamObserver<Empty> responseObserver) {
 			// TODO Auto-generated method stub
 			this.isUp = true;
-			super.restore(request, responseObserver);
+			responseObserver.onNext(Empty.newBuilder().build());
+			responseObserver.onCompleted();
 		}
 
 		@Override

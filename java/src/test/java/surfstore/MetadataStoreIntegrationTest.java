@@ -223,7 +223,8 @@ class MetadataStoreIntegrationTest {
 		FileInfo result4 = MDSStub.readFile(readRequest2);
 		FileInfo result5 = MDSStub.readFile(readRequest3);
 		
-		assertEquals(0, result4.getBlocklistCount());
+		assertEquals(1, result4.getBlocklistCount());
+		assertTrue(result4.getBlocklistList().contains("0"));
 		assertEquals(3, result4.getVersion());
 		
 		assertEquals(1, result5.getBlocklistCount());
