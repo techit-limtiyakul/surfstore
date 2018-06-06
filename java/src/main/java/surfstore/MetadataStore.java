@@ -2,17 +2,11 @@ package surfstore;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.charset.Charset;
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.logging.Logger;
 
-import javax.xml.ws.Response;
-
-import com.google.protobuf.ByteString;
 import com.google.protobuf.ProtocolStringList;
 
 import io.grpc.ManagedChannel;
@@ -28,7 +22,6 @@ import surfstore.BlockStoreGrpc.BlockStoreBlockingStub;
 import surfstore.SurfStoreBasic.Block;
 import surfstore.SurfStoreBasic.Empty;
 import surfstore.SurfStoreBasic.FileInfo;
-import surfstore.SurfStoreBasic.FileInfo.Builder;
 import surfstore.SurfStoreBasic.SimpleAnswer;
 import surfstore.SurfStoreBasic.WriteResult;
 
@@ -108,12 +101,13 @@ public final class MetadataStore {
         File configf = new File(c_args.getString("config_file"));
         ConfigReader config = new ConfigReader(configf);
 
-        if (c_args.getInt("number") > config.getNumMetadataServers()) {
-            throw new RuntimeException(String.format("metadata%d not in config file", c_args.getInt("number")));
+        Integer nodeNumber = c_args.getInt("number");
+		if (nodeNumber > config.getNumMetadataServers()) {
+            throw new RuntimeException(String.format("metadata%d not in config file", nodeNumber));
         }
 
         final MetadataStore server = new MetadataStore(config);
-        server.start(config.getMetadataPort(c_args.getInt("number")), c_args.getInt("threads"));
+        server.start(config.getMetadataPort(nodeNumber), c_args.getInt("threads"));
         server.blockUntilShutdown();
     }
 

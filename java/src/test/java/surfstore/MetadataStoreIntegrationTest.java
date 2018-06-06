@@ -40,7 +40,7 @@ class MetadataStoreIntegrationTest {
 		MDS = new MetadataStore(config);
 		
 		blockStoreStub = createBlockStoreStub(config);
-		MDSStub = createMetadataStoreStub(config, blockStoreStub);
+		MDSStub = createMetadataStoreStub(config);
     }
 	
 	
@@ -59,7 +59,7 @@ class MetadataStoreIntegrationTest {
 			blockStoreStub = createBlockStoreStub(config);
 			
 			MDS.stop();
-			MDSStub = createMetadataStoreStub(config, blockStoreStub);
+			MDSStub = createMetadataStoreStub(config);
 		}
 		catch(Exception e) {
 			
@@ -254,8 +254,7 @@ class MetadataStoreIntegrationTest {
 		assertEquals(3, result2.getCurrentVersion());
 	}
 
-	private static MetadataStoreBlockingStub createMetadataStoreStub(ConfigReader config,
-			BlockStoreBlockingStub blockStoreStub) throws IOException {
+	private static MetadataStoreBlockingStub createMetadataStoreStub(ConfigReader config) throws IOException {
 		MDS.start(config.getMetadataPort(1), 1);
 		
 		ManagedChannel mdChannel = ManagedChannelBuilder.forAddress("127.0.0.1", config.getMetadataPort(1))
