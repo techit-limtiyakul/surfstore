@@ -5,11 +5,11 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.ArrayList;
-import java.util.Base64;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
 
@@ -32,6 +32,7 @@ public final class Client {
     private final BlockStoreGrpc.BlockStoreBlockingStub blockStub;
 
     private final ConfigReader config;
+    private final int BLOCK_SIZE = 4096;
 
     public Client(ConfigReader config) {
         this.metadataChannel = ManagedChannelBuilder.forAddress("127.0.0.1", config.getMetadataPort(1))
@@ -90,10 +91,42 @@ public final class Client {
         FileInfo remoteFile = metadataStub.getVersion(localFileBuilder.build());
 
         localFileBuilder.setVersion(remoteFile.getVersion() + 1);
+        try{
+            byte[] data = Files.readAllBytes(Paths.get(fileName));
+            int numBlocks = 1 + data.length/4096;
+            Map<String, Integer> blocks = new HashMap<>();
+            for(int i=0; i<numBlocks; i++){
+                String hash;
+                if(i<numBlocks-1) hash = toSHA256(Arrays.copyOfRange(data, i*BLOCK_SIZE,  (i+1)*BLOCK_SIZE));
+                else hash= toSHA256(Arrays.copyOfRange(data, i*BLOCK_SIZE,  data.length));
+                localFileBuilder.setBlocklist(i, hash);
+                blocks.put(hash, i);
+            }
+
+            WriteResult modifyResponse = metadataStub.modifyFile(localFileBuilder.build());
+            if(modifyResponse.getResultValue() == 2){
+                for(String missingHash: modifyResponse.getMissingBlocksList()){
+                    int begin = blocks.get(missingHash)*BLOCK_SIZE;
+                    int size = BLOCK_SIZE;
+                    if(data.length - begin < size) size = data.length - begin - 1 ;
+                    Block b = Block.newBuilder().setHash(missingHash)
+                            .setData(ByteString.copyFrom(data, begin, size))
+                            .build();
+
+                    blockStub.storeBlock(b);
+                }
+            }
 
 
+
+        } catch (IOException e){
+            logger.severe("Caught IOException: " + e.getMessage());
+            e.printStackTrace();
+            System.exit(2);
+        }
     }
 
+    //TODO add download optimization
     private void callDownload(String fileName){
         FileInfo localFile = FileInfo.newBuilder().setFilename(fileName).build();
         FileInfo remoteFile = metadataStub.readFile(localFile);
@@ -110,22 +143,27 @@ public final class Client {
                 }
             } catch (IOException e){
                 logger.severe("Caught IOException: " + e.getMessage());
+                e.printStackTrace();
+                System.exit(2);
             }
         }
     }
 
     private void callDelete(String fileName){
+        FileInfo.Builder localFileBuilder = FileInfo.newBuilder().setFilename(fileName);
+        FileInfo remoteFile = metadataStub.getVersion(localFileBuilder.build());
+
+        localFileBuilder.setVersion(remoteFile.getVersion() + 1);
+        ensure(metadataStub.modifyFile(localFileBuilder.build()).getResultValue() == 1);
 
     }
 
 	private void go(String method, String fileName){
 		metadataStub.ping(Empty.newBuilder().build());
         logger.info("Successfully pinged the Metadata server");
-        
+
         blockStub.ping(Empty.newBuilder().build());
         logger.info("Successfully pinged the Blockstore server");
-
-
 
 
 //        logger.info("Getting file info: "+fileName+", version:" + remoteFile.getVersion());
@@ -133,12 +171,10 @@ public final class Client {
 
         if(method.equals("getversion")){
             callGetVersion(fileName);
-
         }else if(method.equals("upload")){
-
+            callUpload(fileName);
         }else if(method.equals("download")){
             callDownload(fileName);
-
         }else if(method.equals("delete")){
             callDelete(fileName);
         }else{
@@ -188,7 +224,7 @@ public final class Client {
             throw new RuntimeException("Argument parsing failed");
         }
 
-
+        System.out.println(c_args.getString("method"));
         File configf = new File(c_args.getString("config_file"));
         String fileName = c_args.getString("path_to_file");
         String method = c_args.getString("method");
