@@ -2,7 +2,9 @@ package surfstore;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.logging.Logger;
@@ -43,10 +45,10 @@ public final class MetadataStore {
         this.blockStub = BlockStoreGrpc.newBlockingStub(blockChannel);
 
 	}
-
-	protected void start(int port, int numThreads) throws IOException {
+    
+	protected void start(int port, int numThreads, int nodeNumber) throws IOException {
         server = ServerBuilder.forPort(port)
-                .addService(new MetadataStoreImpl(this.blockStub))
+                .addService(new MetadataStoreImpl(this.blockStub, this.config, 1))
                 .executor(Executors.newFixedThreadPool(numThreads))
                 .build()
                 .start();
@@ -107,17 +109,52 @@ public final class MetadataStore {
         }
 
         final MetadataStore server = new MetadataStore(config);
-        server.start(config.getMetadataPort(nodeNumber), c_args.getInt("threads"));
+        server.start(config.getMetadataPort(nodeNumber), c_args.getInt("threads"), 1);
         server.blockUntilShutdown();
     }
 
+    static class NodeInfo{
+    		private int port;
+    		private boolean isLeader;
+    		
+    		public NodeInfo(int port, boolean isLeader) {
+    			this.port = port;
+    			this.isLeader = isLeader;
+    		}
+    }
+    
     static class MetadataStoreImpl extends MetadataStoreGrpc.MetadataStoreImplBase {
     		private Map<String, FileInfo> fileInfos;
+    		private List<FileInfo> logList;
+    		private int lastCommitted;
     		private BlockStoreBlockingStub blockStoreStub;
+    		private boolean isLeader;
+    		private List<NodeInfo> nodeList;
+    		private int leaderPort;
+    		private boolean isUp;
 
-	    	public MetadataStoreImpl(BlockStoreBlockingStub blockStub) {
+	    	public MetadataStoreImpl(BlockStoreBlockingStub blockStub, ConfigReader config, int nodeNumber) {
 	    		super();
 	    		this.blockStoreStub = blockStub;
+	    		
+	    		int leaderNum = config.getLeaderNum();
+			this.isLeader = nodeNumber == leaderNum;
+	    		this.leaderPort = config.getMetadataPort(leaderNum);
+	    		
+	    		this.lastCommitted = -1;
+	    		this.logList = new ArrayList<FileInfo>();
+	    		this.isUp = true;
+	    		
+	    		this.nodeList = new ArrayList<NodeInfo>();
+			nodeList.add(new NodeInfo(this.leaderPort, true));
+
+	    		for(int i=1; i<=config.getNumMetadataServers(); i++) {
+	    			//add all other nodes that aren't leader
+	    			if(i != nodeNumber && i != leaderNum) {	    				
+	    				nodeList.add(new NodeInfo(config.getMetadataPort(i), false));
+	    			}
+	    		}
+	    		
 	    		this.fileInfos = new HashMap<String, FileInfo>();
 		}
 
@@ -157,7 +194,6 @@ public final class MetadataStore {
 
 		@Override
 		public void modifyFile(FileInfo request, StreamObserver<WriteResult> responseObserver) {
-			String requestedFilename = request.getFilename();
 			int newVersion = request.getVersion();
 			
 			ProtocolStringList hashList = request.getBlocklistList();
@@ -165,10 +201,14 @@ public final class MetadataStore {
 			boolean hasNewBlock = false;
 			WriteResult.Builder builder = WriteResult.newBuilder();
 			
-			int currentVersion = 0;
-			if(fileInfos.containsKey(requestedFilename)) {
-				FileInfo existingFileInfo = fileInfos.get(requestedFilename);
-				currentVersion = existingFileInfo.getVersion();			
+			int currentVersion = getCurrentVersion(request);
+			
+			if(!this.isLeader)
+			{
+				builder.setResult(WriteResult.Result.NOT_LEADER);
+				responseObserver.onNext(builder.build());
+				responseObserver.onCompleted();
+				return;
 			}
 			
 			if(newVersion != currentVersion + 1) {
@@ -192,7 +232,10 @@ public final class MetadataStore {
 					builder.setResult(WriteResult.Result.OK);
 					builder.setCurrentVersion(newVersion);
 					// good request, update log, commit
-					fileInfos.put(requestedFilename, request);
+					logList.add(request);
+					//TODO: send 2pc log append vote request
+					//TODO: wait ... ms, if majority voted, send commit to every followers
+					commitLog();
 				}
 			}
 
@@ -200,9 +243,57 @@ public final class MetadataStore {
 			responseObserver.onCompleted();
 		}
 
+		@Override
+		public void deleteFile(FileInfo request, StreamObserver<WriteResult> responseObserver) {
+			int newVersion = request.getVersion();
+
+			WriteResult.Builder builder = WriteResult.newBuilder();
+			
+			if(!this.isLeader)
+			{
+				builder.setResult(WriteResult.Result.NOT_LEADER);
+				responseObserver.onNext(builder.build());
+				responseObserver.onCompleted();
+				return;
+			}
+			
+			int currentVersion = getCurrentVersion(request);
+			
+			if(newVersion != currentVersion + 1) {
+				builder.setResult(WriteResult.Result.OLD_VERSION).setCurrentVersion(currentVersion);
+			}
+			else {
+				builder.setResult(WriteResult.Result.OK);
+				builder.setCurrentVersion(newVersion);
+				
+				FileInfo log = FileInfo.newBuilder().setFilename(request.getFilename()).setVersion(newVersion).build();
+				logList.add(log);
+				commitLog();
+			}
+
+			responseObserver.onNext(builder.build());
+			responseObserver.onCompleted();
+		}
+
+		private int getCurrentVersion(FileInfo request) {
+			String requestedFilename = request.getFilename();
+			int currentVersion = 0;
+			if(fileInfos.containsKey(requestedFilename)) {
+				FileInfo existingFileInfo = fileInfos.get(requestedFilename);
+				currentVersion = existingFileInfo.getVersion();			
+			}
+			return currentVersion;
+		}
+
+		private void commitLog() {
+			lastCommitted += 1;
+			FileInfo log = logList.get(lastCommitted);
+			fileInfos.put(log.getFilename(), log);
+		}
+		
 		private void printFileSummary() {
 			System.out.println("File Summary");
-
+			
 			for(FileInfo f:this.fileInfos.values()) {
 				System.out.println(f.getFilename() + " " + f.getVersion());
 			}
@@ -211,61 +302,45 @@ public final class MetadataStore {
 		}
 
 		@Override
-		public void deleteFile(FileInfo request, StreamObserver<WriteResult> responseObserver) {
-			String requestedFilename = request.getFilename();
-			int newVersion = request.getVersion();
-
-			WriteResult.Builder builder = WriteResult.newBuilder();
-			
-			int currentVersion = 0;
-			if(fileInfos.containsKey(requestedFilename)) {
-				FileInfo existingFileInfo = fileInfos.get(requestedFilename);
-				currentVersion = existingFileInfo.getVersion();			
-			}
-			
-			if(newVersion != currentVersion + 1) {
-				builder.setResult(WriteResult.Result.OLD_VERSION).setCurrentVersion(currentVersion);
-			}
-			else {
-				builder.setResult(WriteResult.Result.OK);
-				builder.setCurrentVersion(newVersion);
-				// good request, update log, commit
-				
-				fileInfos.put(requestedFilename, FileInfo.newBuilder().setFilename(requestedFilename).setVersion(newVersion).build());
-			}
-
-			responseObserver.onNext(builder.build());
-			responseObserver.onCompleted();
-		}
-
-		@Override
 		public void isLeader(Empty request, StreamObserver<SimpleAnswer> responseObserver) {
-			// TODO Auto-generated method stub
-			super.isLeader(request, responseObserver);
+			responseObserver.onNext(SimpleAnswer.newBuilder().setAnswer(this.isLeader).build());
+			responseObserver.onCompleted();
 		}
 
 		@Override
 		public void crash(Empty request, StreamObserver<Empty> responseObserver) {
 			// TODO Auto-generated method stub
+			this.isUp = false;
 			super.crash(request, responseObserver);
 		}
 
 		@Override
 		public void restore(Empty request, StreamObserver<Empty> responseObserver) {
 			// TODO Auto-generated method stub
+			this.isUp = true;
 			super.restore(request, responseObserver);
 		}
 
 		@Override
 		public void isCrashed(Empty request, StreamObserver<SimpleAnswer> responseObserver) {
 			// TODO Auto-generated method stub
-			super.isCrashed(request, responseObserver);
+			responseObserver.onNext(SimpleAnswer.newBuilder().setAnswer(!this.isUp).build());
+			responseObserver.onCompleted();
 		}
 
 		@Override
 		public void getVersion(FileInfo request, StreamObserver<FileInfo> responseObserver) {
 			// TODO Auto-generated method stub
-			super.getVersion(request, responseObserver);
+			FileInfo ans;
+			if(this.getCurrentVersion(request) != 0) {
+				ans = fileInfos.get(request.getFilename());
+			}
+			else
+			{
+				ans = FileInfo.newBuilder().setFilename(request.getFilename()).setVersion(0).build();
+			}
+			responseObserver.onNext(ans);
+			responseObserver.onCompleted();
 		}
     }
 }

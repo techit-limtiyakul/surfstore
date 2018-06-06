@@ -255,7 +255,7 @@ class MetadataStoreIntegrationTest {
 	}
 
 	private static MetadataStoreBlockingStub createMetadataStoreStub(ConfigReader config) throws IOException {
-		MDS.start(config.getMetadataPort(1), 1);
+		MDS.start(config.getMetadataPort(1), 1, 1);
 		
 		ManagedChannel mdChannel = ManagedChannelBuilder.forAddress("127.0.0.1", config.getMetadataPort(1))
 				.usePlaintext(true).build();
