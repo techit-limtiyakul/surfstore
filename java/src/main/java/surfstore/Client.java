@@ -131,7 +131,7 @@ public final class Client {
         FileInfo localFile = FileInfo.newBuilder().setFilename(fileName).build();
         FileInfo remoteFile = metadataStub.readFile(localFile);
 
-        if(remoteFile.getVersion() == 0 || remoteFile.getBlocklist(0).equals("0") ) logger.info("File not found.");
+        if(remoteFile.getVersion() == 0 || remoteFile.getBlocklist(0).equals("0") ) System.out.println("Not Found.");
         else{
             try{
                 FileOutputStream fos = new FileOutputStream(fileName);
@@ -157,7 +157,6 @@ public final class Client {
         WriteResult deleteResult = metadataStub.modifyFile(localFileBuilder.build());
         ensure(deleteResult.getResultValue() == 1);
         System.out.println("OK");
-
     }
 
 	private void go(String method, String fileName){
