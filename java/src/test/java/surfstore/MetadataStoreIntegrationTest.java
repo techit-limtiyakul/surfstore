@@ -145,13 +145,13 @@ class MetadataStoreIntegrationTest {
 		assertEquals(0, result.getCurrentVersion());
 		
 		FileInfo request2 = createFileInfo("Hello.txt", -1, "blk1", "blk2");
-		WriteResult result2 = MDSStub.modifyFile(request);
+		WriteResult result2 = MDSStub.modifyFile(request2);
 		
 		assertEquals(WriteResult.Result.OLD_VERSION_VALUE, result2.getResultValue());
 		assertEquals(0, result2.getCurrentVersion());	
 		
 		FileInfo request3 = createFileInfo("Hello.txt", 3, "blk1", "blk2");
-		WriteResult result3 = MDSStub.modifyFile(request);
+		WriteResult result3 = MDSStub.modifyFile(request3);
 		
 		assertEquals(WriteResult.Result.OLD_VERSION_VALUE, result3.getResultValue());
 		assertEquals(0, result3.getCurrentVersion());
@@ -173,7 +173,7 @@ class MetadataStoreIntegrationTest {
 		assertEquals(2, result.getCurrentVersion());
 		
 		FileInfo request4 = createFileInfo("Hello.txt", 2, "blk1", "blk3");
-		WriteResult result2 = MDSStub.modifyFile(request3);
+		WriteResult result2 = MDSStub.modifyFile(request4);
 		
 		
 		assertEquals(WriteResult.Result.OLD_VERSION_VALUE, result2.getResultValue());

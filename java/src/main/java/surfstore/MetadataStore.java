@@ -184,8 +184,7 @@ public final class MetadataStore {
         		}
         		else
         		{
-        			responseFile = FileInfo.newBuilder().setFilename("").setVersion(0).build();
-
+        			responseFile = FileInfo.newBuilder().setFilename("").setFilename(requestedFilename).setVersion(0).build();
         		}
 
         		responseObserver.onNext(responseFile);
