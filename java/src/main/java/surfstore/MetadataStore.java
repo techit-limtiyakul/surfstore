@@ -197,7 +197,7 @@ public final class MetadataStore {
 				while(true) {
 					for(NodeInfo node: nodeList) {
 						LogMessage.Builder builder = LogMessage.newBuilder();
-						//TODO in the equal case, where everything is up to date, when do we add logIndex?
+						builder.setLogIndex(logList.size() - 1);
  						if(node.lastLog < logList.size() - 1) {
 							int nextIndex = node.lastLog + 1;
 							builder.setLogIndex(nextIndex);
