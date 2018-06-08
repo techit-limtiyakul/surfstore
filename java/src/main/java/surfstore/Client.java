@@ -109,7 +109,7 @@ public final class Client {
         localFileBuilder.setVersion(remoteFile.getVersion() + 1);
         try{
             byte[] data = Files.readAllBytes(Paths.get(filePath));
-            Map<String, Integer> existingBlocks = addHashes(localFileBuilder, data);
+            Map<String, byte[]> existingBlocks = addHashes(localFileBuilder, data);
 
             WriteResult modifyResponse = metadataStub.modifyFile(localFileBuilder.build());
 
@@ -117,14 +117,12 @@ public final class Client {
             while(modifyResponse.getResultValue() != WriteResult.Result.OK_VALUE) {
                 if (modifyResponse.getResultValue() == WriteResult.Result.MISSING_BLOCKS_VALUE) {
                     for (String missingHash : modifyResponse.getMissingBlocksList()) {
-                        int begin = existingBlocks.get(missingHash) * BLOCK_SIZE;
-                        int size = BLOCK_SIZE;
-                        if (data.length - begin < size) size = data.length - begin - 1;
                         Block b = Block.newBuilder().setHash(missingHash)
-                                .setData(ByteString.copyFrom(data, begin, size))
+                                .setData(ByteString.copyFrom(existingBlocks.get(missingHash)))
                                 .build();
 
                         blockStub.storeBlock(b);
+                        logger.info("upload block: " + missingHash);
                     }
                 }
 
@@ -146,16 +144,15 @@ public final class Client {
         }
     }
 
-    private Map<String, Integer> addHashes(FileInfo.Builder localFileBuilder, byte[] data) {
+    private Map<String, byte[]> addHashes(FileInfo.Builder localFileBuilder, byte[] data) {
         List<byte[]> blockList = fileToBlocks(data);
         int numBlocks = blockList.size();
-        Map<String, Integer> blocks = new HashMap<>();
+        Map<String, byte[]> blocks = new HashMap<>();
         for(int i=0; i<numBlocks; i++){
             String hash;
-            if(i<numBlocks-1) hash = toSHA256(Arrays.copyOfRange(data, i*BLOCK_SIZE,  (i+1)*BLOCK_SIZE));
-            else hash= toSHA256(Arrays.copyOfRange(data, i*BLOCK_SIZE,  data.length));
+            hash = toSHA256(blockList.get(i));
             localFileBuilder.addBlocklist(hash);
-            blocks.put(hash, i);
+            blocks.put(hash, blockList.get(i));
         }
         return blocks;
     }
@@ -163,11 +160,6 @@ public final class Client {
     private void callDownload(String fileName, String directory){
         FileInfo localFile = FileInfo.newBuilder().setFilename(fileName).build();
         FileInfo remoteFile = metadataStub.readFile(localFile);
-
-        logger.info(remoteFile.getFilename());
-        logger.info(remoteFile.getVersion() + "");
-        logger.info(remoteFile.getBlocklistCount()+ "");
-        logger.info(remoteFile.getBlocklist(0)+ "");
 
         if(remoteFile.getVersion() == 0 || (remoteFile.getBlocklistCount() == 1 && remoteFile.getBlocklist(0).equals("0")) ) {
             System.out.println("Not Found");
@@ -179,7 +171,6 @@ public final class Client {
 
                 //scan current directory for all blocks
                 File folder = new File(directory);
-                logger.info("is a directory: " + folder.isDirectory());
                 for(final File fileEntry: folder.listFiles()){
                     if(fileEntry.isFile()){
                         List<byte[]> blocks = fileToBlocks(Files.readAllBytes(fileEntry.toPath()));
@@ -238,7 +229,6 @@ public final class Client {
 
         blockStub.ping(Empty.newBuilder().build());
         logger.info("Successfully pinged the Blockstore server");
-
 
         if(method.equals("getversion")){
             callGetVersion(fileName);

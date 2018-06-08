@@ -59,7 +59,6 @@ class MetaDataStoreTwoPhaseTest {
         leader.stop();
         f1.stop();
         f2.stop();
-
     }
 
     @Test
@@ -110,12 +109,8 @@ class MetaDataStoreTwoPhaseTest {
         assertEquals(file1Write.getResultValue(), WriteResult.Result.OK_VALUE);
 
         assertTrue(f2Stub.isCrashed(Empty.newBuilder().build()).getAnswer());
-//        System.out.println(leaderStub.readFile(localFile).getBlocklistList());
-//        System.out.println(leaderStub.readFile(localFile).getFilename());
-//        System.out.println(leaderStub.readFile(localFile).getVersion());
-//        System.out.println(f1Stub.readFile(localFile).getBlocklistList());
-//        System.out.println(f1Stub.readFile(localFile).getFilename());
-//        System.out.println(f1Stub.readFile(localFile).getVersion());
+        assertFalse(f1Stub.isCrashed(Empty.newBuilder().build()).getAnswer());
+
         assertTrue(inSyncWithLeader(localFile, f1Stub));
         assertThrows(AssertionError.class, () -> inSyncWithLeader(localFile, f2Stub));
 
@@ -124,8 +119,6 @@ class MetaDataStoreTwoPhaseTest {
         FileInfo updatedFile = createNewFile("file3", 2);
 
         assertEquals(leaderStub.deleteFile(updatedFile).getResultValue(), WriteResult.Result.OK_VALUE);
-
-        Thread.sleep(1000);
 
         assertTrue(inSyncWithLeader(updatedFile, f1Stub));
         assertTrue(inSyncWithLeader(updatedFile, f2Stub));
