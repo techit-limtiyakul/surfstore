@@ -139,13 +139,15 @@ message NodeList {
 }
 
 // LogMessage contains the latest index of log from Leader
+// LogIndex is the index of first log in the message
+// LogContent contains a list consecutive logs from a particular point of time to present
 message LogMessage{
     int32 log_index = 1;
     repeated FileInfo log_content = 2;
 }
 
 // LogAnswer is the response from follower to leader after it receives AppendLog rpc
-// Follower replies back with its most recent log index
+// Follower replies back with its most recent log index. If the replied most_recent_log does not match the append log request, the leader assume rejection.
 message LogAnswer{
     int32 most_recent_log = 1;
 }
