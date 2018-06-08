@@ -166,6 +166,8 @@ public final class Client {
 
         logger.info(remoteFile.getFilename());
         logger.info(remoteFile.getVersion() + "");
+        logger.info(remoteFile.getBlocklistCount()+ "");
+        logger.info(remoteFile.getBlocklist(0)+ "");
 
         if(remoteFile.getVersion() == 0 || (remoteFile.getBlocklistCount() == 1 && remoteFile.getBlocklist(0).equals("0")) ) {
             System.out.println("Not Found");
@@ -221,10 +223,10 @@ public final class Client {
         }
 
         localFileBuilder.setVersion(remoteFile.getVersion() + 1);
-        WriteResult deleteResult = metadataStub.modifyFile(localFileBuilder.build());
+        WriteResult deleteResult = metadataStub.deleteFile(localFileBuilder.build());
         while(deleteResult.getResult() != WriteResult.Result.OK) {
             FileInfo.Builder builder = FileInfo.newBuilder().setFilename(fileName).setVersion(deleteResult.getCurrentVersion() + 1);
-            deleteResult = metadataStub.modifyFile(builder.build());
+            deleteResult = metadataStub.deleteFile(builder.build());
         }
         ensure(deleteResult.getResultValue() == 0);
         System.out.println("OK");
