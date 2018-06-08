@@ -82,47 +82,61 @@ public final class Client {
         return Base64.getEncoder().encodeToString(hash);
     }
 
+    private List<byte []> fileToBlocks(byte[] data){
+        int numBlocks = 1 + data.length/4096;
+        List<byte []> result = new ArrayList<>();
+        for(int i=0; i<numBlocks; i++){
+            if(i<numBlocks-1) result.add(Arrays.copyOfRange(data, i*BLOCK_SIZE,  (i+1)*BLOCK_SIZE));
+            else result.add(Arrays.copyOfRange(data, i*BLOCK_SIZE,  data.length));
+        }
+
+        return result;
+
+    }
+
     private void callGetVersion(String fileName){
         FileInfo localFile = FileInfo.newBuilder().setFilename(fileName).build();
         FileInfo remoteFile = metadataStub.getVersion(localFile);
         System.out.println(remoteFile.getVersion()+"");
     }
 
-    //TODO confirm how to handle different formats of file names
-    private void callUpload(String fileName){
-    		//TODO:filename
+    private void callUpload(String filePath){
+        File localFile = new File(filePath);
+        String fileName = localFile.getName();
+
         FileInfo.Builder localFileBuilder = FileInfo.newBuilder().setFilename(fileName);
         FileInfo remoteFile = metadataStub.getVersion(localFileBuilder.build());
         localFileBuilder.setVersion(remoteFile.getVersion() + 1);
         try{
-            byte[] data = Files.readAllBytes(Paths.get(fileName));
-            Map<String, Integer> blocks = addHashes(localFileBuilder, data);
+            byte[] data = Files.readAllBytes(Paths.get(filePath));
+            Map<String, Integer> existingBlocks = addHashes(localFileBuilder, data);
 
             WriteResult modifyResponse = metadataStub.modifyFile(localFileBuilder.build());
-            
+
             //Retry upload
             while(modifyResponse.getResultValue() != WriteResult.Result.OK_VALUE) {
-            		//TODO: filename
-                if(modifyResponse.getResultValue() == WriteResult.Result.MISSING_BLOCKS_VALUE){
-                    for(String missingHash: modifyResponse.getMissingBlocksList()){
-                        int begin = blocks.get(missingHash)*BLOCK_SIZE;
+                if (modifyResponse.getResultValue() == WriteResult.Result.MISSING_BLOCKS_VALUE) {
+                    for (String missingHash : modifyResponse.getMissingBlocksList()) {
+                        int begin = existingBlocks.get(missingHash) * BLOCK_SIZE;
                         int size = BLOCK_SIZE;
-                        if(data.length - begin < size) size = data.length - begin - 1 ;
+                        if (data.length - begin < size) size = data.length - begin - 1;
                         Block b = Block.newBuilder().setHash(missingHash)
                                 .setData(ByteString.copyFrom(data, begin, size))
                                 .build();
 
                         blockStub.storeBlock(b);
                     }
-                } 
-              
-               	int newVersion = modifyResponse.getCurrentVersion() + 1;
+                }
+
+                int newVersion = modifyResponse.getCurrentVersion() + 1;
                 FileInfo.Builder builder = FileInfo.newBuilder().setFilename(fileName);
 
                 builder.setVersion(newVersion);
                 addHashes(builder, data);
+
                 modifyResponse = metadataStub.modifyFile(builder.build());
             }
+
             System.out.println("OK");
 
         } catch (IOException e){
@@ -132,69 +146,92 @@ public final class Client {
         }
     }
 
-	private Map<String, Integer> addHashes(FileInfo.Builder localFileBuilder, byte[] data) {
-    
-		int numBlocks = (int) Math.ceil(data.length/4096);
-		Map<String, Integer> blocks = new HashMap<>();
-		for(int i=0; i<numBlocks; i++){
-		    String hash;
-		    if(i<numBlocks-1) hash = toSHA256(Arrays.copyOfRange(data, i*BLOCK_SIZE,  (i+1)*BLOCK_SIZE));
-		    else hash= toSHA256(Arrays.copyOfRange(data, i*BLOCK_SIZE,  data.length));
-		    localFileBuilder.addBlocklist(hash);
-		    blocks.put(hash, i);
-		}
-		return blocks;
-	}
+    private Map<String, Integer> addHashes(FileInfo.Builder localFileBuilder, byte[] data) {
+        List<byte[]> blockList = fileToBlocks(data);
+        int numBlocks = blockList.size();
+        Map<String, Integer> blocks = new HashMap<>();
+        for(int i=0; i<numBlocks; i++){
+            String hash;
+            if(i<numBlocks-1) hash = toSHA256(Arrays.copyOfRange(data, i*BLOCK_SIZE,  (i+1)*BLOCK_SIZE));
+            else hash= toSHA256(Arrays.copyOfRange(data, i*BLOCK_SIZE,  data.length));
+            localFileBuilder.addBlocklist(hash);
+            blocks.put(hash, i);
+        }
+        return blocks;
+    }
 
-    //TODO add download optimization
-    //TODO confirm which directory to download file to
-    private void callDownload(String fileName){
+    private void callDownload(String fileName, String directory){
         FileInfo localFile = FileInfo.newBuilder().setFilename(fileName).build();
         FileInfo remoteFile = metadataStub.readFile(localFile);
 
+        logger.info(remoteFile.getFilename());
+        logger.info(remoteFile.getVersion() + "");
+
         if(remoteFile.getVersion() == 0 || (remoteFile.getBlocklistCount() == 1 && remoteFile.getBlocklist(0).equals("0")) ) {
-        		System.out.println("Not Found");
+            System.out.println("Not Found");
         }
         else{
             try{
-                FileOutputStream fos = new FileOutputStream(fileName);
-                for(String hash: remoteFile.getBlocklistList()){
-                    Block b = Block.newBuilder().setHash(hash).build();
-                    ensure(blockStub.hasBlock(b).getAnswer());
-                    fos.write(blockStub.getBlock(b).getData().toByteArray());
-                    
-                    System.out.println("OK");
+                if(directory.equals("")) directory = System.getProperty("user.dir");
+                Map<String, byte[]> existingBlocks = new HashMap<>();
+
+                //scan current directory for all blocks
+                File folder = new File(directory);
+                logger.info("is a directory: " + folder.isDirectory());
+                for(final File fileEntry: folder.listFiles()){
+                    if(fileEntry.isFile()){
+                        List<byte[]> blocks = fileToBlocks(Files.readAllBytes(fileEntry.toPath()));
+                        for(byte[] block: blocks){
+                            String hash = toSHA256(block);
+                            existingBlocks.put(hash, block);
+                        }
+                    }
                 }
-            } catch (IOException e){
-                logger.severe("Caught IOException: " + e.getMessage());
+
+                FileOutputStream fos = new FileOutputStream(directory+"/"+fileName);
+                for(String hash: remoteFile.getBlocklistList()){
+                    byte[] data = existingBlocks.get(hash);
+                    if(data == null){
+                        Block b = Block.newBuilder().setHash(hash).build();
+                        ensure(blockStub.hasBlock(b).getAnswer());
+                        data = blockStub.getBlock(b).getData().toByteArray();
+                        logger.info("getting block from blockStore");
+                    }
+                    fos.write(data);
+                    logger.info("writing block: " + hash);
+                }
+                System.out.println("OK");
+            } catch (Exception e){
+                logger.severe("Caught Exception: " + e.getMessage());
                 e.printStackTrace();
                 System.exit(2);
             }
         }
     }
 
-    private void callDelete(String fileName){
-    	//TODO:filename
+    private void callDelete(String filePath){
+        File localFile = new File(filePath);
+        String fileName = localFile.getName();
+
         FileInfo.Builder localFileBuilder = FileInfo.newBuilder().setFilename(fileName);
         FileInfo remoteFile = metadataStub.getVersion(localFileBuilder.build());
         if(remoteFile.getVersion() == 0) {
-        		System.out.println("Not Found");
-        		return;
+            System.out.println("Not Found");
+            return;
         }
 
         localFileBuilder.setVersion(remoteFile.getVersion() + 1);
         WriteResult deleteResult = metadataStub.modifyFile(localFileBuilder.build());
         while(deleteResult.getResult() != WriteResult.Result.OK) {
-        		//TODO: filename
-        		FileInfo.Builder builder = FileInfo.newBuilder().setFilename(fileName).setVersion(deleteResult.getCurrentVersion() + 1);
-        		deleteResult = metadataStub.modifyFile(builder.build());
+            FileInfo.Builder builder = FileInfo.newBuilder().setFilename(fileName).setVersion(deleteResult.getCurrentVersion() + 1);
+            deleteResult = metadataStub.modifyFile(builder.build());
         }
         ensure(deleteResult.getResultValue() == 0);
         System.out.println("OK");
     }
 
-	private void go(String method, String fileName){
-		metadataStub.ping(Empty.newBuilder().build());
+    private void go(String method, String fileName, String directory){
+        metadataStub.ping(Empty.newBuilder().build());
         logger.info("Successfully pinged the Metadata server");
 
         blockStub.ping(Empty.newBuilder().build());
@@ -206,43 +243,25 @@ public final class Client {
         }else if(method.equals("upload")){
             callUpload(fileName);
         }else if(method.equals("download")){
-            callDownload(fileName);
+            callDownload(fileName, directory);
         }else if(method.equals("delete")){
             callDelete(fileName);
         }else{
             logger.severe("The requested operation is not supported. Try upload, download, delete or getversion.");
         }
 
-        // TODO: Implement your client here
-//	    Block b1 = stringToBlock("block_01");
-//	    Block b2 = stringToBlock("block_02");
-//
-//	    ensure (!blockStub.hasBlock(b1).getAnswer());
-//	    ensure(!blockStub.hasBlock(b2).getAnswer());
-//
-//	    blockStub.storeBlock(b1);
-//        ensure(blockStub.hasBlock(b1).getAnswer());
-//
-//        blockStub.storeBlock(b2);
-//        ensure(blockStub.hasBlock(b2).getAnswer());
-//
-//        Block b1prime = blockStub.getBlock(b1);
-//        ensure(b1prime.getHash().equals(b1.getHash()));
-//        ensure(b1.getData().equals(b1.getData()));
-
     }
 
-	/*
-	 * TODO: Add command line handling here
-	 */
+    /*
+     * TODO: Add command line handling here
+     */
     private static Namespace parseArgs(String[] args) {
         ArgumentParser parser = ArgumentParsers.newFor("Client").build().description("Client for SurfStore");
         parser.addArgument("config_file").type(String.class).help("Path to configuration file");
         parser.addArgument("method").type(String.class).help("upload, download, delete or getversion");
         parser.addArgument("path_to_file").type(String.class).help("Path to the file (in case of local) or remote file name");
-        //TODO: Directory
-        //parser.addArgument("directory").nargs("?").type(String.class)
-        
+        parser.addArgument("directory").nargs("?").setDefault("").type(String.class).help("Directory to store downloaded file");
+
         Namespace res = null;
         try {
             res = parser.parseArgs(args);
@@ -261,13 +280,14 @@ public final class Client {
         File configf = new File(c_args.getString("config_file"));
         String fileName = c_args.getString("path_to_file");
         String method = c_args.getString("method");
+        String directory = c_args.getString("directory");
 
         ConfigReader config = new ConfigReader(configf);
 
         Client client = new Client(config);
-        
+
         try {
-        	client.go(method.toLowerCase(), fileName);
+            client.go(method.toLowerCase(), fileName, directory);
         } finally {
             client.shutdown();
         }

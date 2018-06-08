@@ -564,11 +564,6 @@ public final class MetadataStore {
 					logList.add(newLogs.get(i));
 				}
 				builder.setMostRecentLog(logList.size() - 1);
-				
-//				int commitVersion = request.getCommitIndex();
-//				while (lastCommitted < commitVersion && logList.size() > commitVersion) {
-//					commitNextLog();
-//				}		
 			}
 
 			//always commit if you can
