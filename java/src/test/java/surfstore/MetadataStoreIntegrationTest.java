@@ -6,10 +6,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.File;
 import java.io.IOException;
-import java.io.UnsupportedEncodingException;
 import java.nio.charset.Charset;
-import java.nio.charset.StandardCharsets;
 
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -45,6 +44,13 @@ class MetadataStoreIntegrationTest {
 		MDSStub = createMetadataStoreStub(config);
     }
 	
+	@AfterAll
+	public static void shutDown() throws IOException, InterruptedException {
+		blockStoreServer.stop();
+		MDS.stop();
+		blockStoreServer.blockUntilShutdown();
+		MDS.blockUntilShutdown();
+    }
 	
 	//create a new blockstore for fresh data
 	@BeforeEach
