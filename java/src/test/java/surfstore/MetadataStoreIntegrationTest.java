@@ -6,7 +6,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.UnsupportedEncodingException;
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -34,7 +36,7 @@ class MetadataStoreIntegrationTest {
 	
 	@BeforeAll
 	public static void readConf() throws IOException {
-        File configf = new File("src/test/java/surfstore/configCentralized.txt");
+        File configf = new File("src/test/resources/configCentralized.txt");
         config = new ConfigReader(configf);
 		blockStoreServer = new BlockStore(config);
 		MDS = new MetadataStore(config);
@@ -278,5 +280,6 @@ class MetadataStoreIntegrationTest {
 		surfstore.SurfStoreBasic.Block.Builder data = Block.newBuilder().setHash(hash).setData(ByteString.copyFrom("rndm", Charset.forName("UTF-8")));
 		blockStoreStub.storeBlock(data.build());
 	}
+
 
 }
