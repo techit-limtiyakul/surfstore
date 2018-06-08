@@ -23,7 +23,7 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.jupiter.api.Assertions.*;
 
 
-public class MetaDataStoreTwoPhaseTest {
+class MetaDataStoreTwoPhaseTest {
     private static BlockStore blockStoreServer;
     private static MetadataStore leader;
     private static MetadataStore f1;
@@ -35,16 +35,18 @@ public class MetaDataStoreTwoPhaseTest {
     private static MetadataStoreBlockingStub f2Stub;
     private static ConfigReader config;
 
-
-    @BeforeEach
-    void readConf() throws IOException {
+    @BeforeAll
+    static void readConf() throws IOException {
         File configf = new File("src/test/resources/configDistributed.txt");
         config = new ConfigReader(configf);
         blockStoreServer = new BlockStore(config);
         leader = new MetadataStore(config);
         f1 = new MetadataStore(config);
         f2 = new MetadataStore(config);
+    }
 
+    @BeforeEach
+    void setUp() throws IOException {
         blockStoreStub = createBlockStoreStub(config);
         leaderStub = createMetadataStoreStub(leader, config.getLeaderNum(), config.getMetadataPort(config.getLeaderNum()));
         f1Stub = createMetadataStoreStub(f1, 2, config.getMetadataPort(2));
@@ -52,11 +54,12 @@ public class MetaDataStoreTwoPhaseTest {
     }
 
     @AfterEach
-    public void teardown() {
+    void teardown() throws IOException{
         blockStoreServer.stop();
         leader.stop();
         f1.stop();
         f2.stop();
+
     }
 
     @Test
@@ -90,13 +93,13 @@ public class MetaDataStoreTwoPhaseTest {
 
         Thread.sleep(500);
 
-        assertFalse(inSyncWithLeader(localFile, f1Stub));
+        assertThrows(AssertionError.class, () -> inSyncWithLeader(localFile, f1Stub));
         assertTrue(inSyncWithLeader(localFile, f2Stub));
     }
 
     @Test
     void restoreAfterCommit() throws InterruptedException{
-        FileInfo localFile = createNewFile("file2");
+        FileInfo localFile = createNewFile("file3");
 
         FileInfo fileInfo  = leaderStub.readFile(localFile);
         assertEquals(fileInfo.getVersion(), 0);
@@ -106,20 +109,23 @@ public class MetaDataStoreTwoPhaseTest {
         WriteResult file1Write = leaderStub.modifyFile(localFile);
         assertEquals(file1Write.getResultValue(), WriteResult.Result.OK_VALUE);
 
-        Thread.sleep(500);
-
         assertTrue(f2Stub.isCrashed(Empty.newBuilder().build()).getAnswer());
+//        System.out.println(leaderStub.readFile(localFile).getBlocklistList());
+//        System.out.println(leaderStub.readFile(localFile).getFilename());
+//        System.out.println(leaderStub.readFile(localFile).getVersion());
+//        System.out.println(f1Stub.readFile(localFile).getBlocklistList());
+//        System.out.println(f1Stub.readFile(localFile).getFilename());
+//        System.out.println(f1Stub.readFile(localFile).getVersion());
         assertTrue(inSyncWithLeader(localFile, f1Stub));
         assertThrows(AssertionError.class, () -> inSyncWithLeader(localFile, f2Stub));
 
         f2Stub.restore(Empty.newBuilder().build());
 
-        FileInfo updatedFile = createNewFile("file2", 2);
+        FileInfo updatedFile = createNewFile("file3", 2);
 
         assertEquals(leaderStub.deleteFile(updatedFile).getResultValue(), WriteResult.Result.OK_VALUE);
 
         Thread.sleep(1000);
-        System.out.println(f2Stub.isCrashed(Empty.newBuilder().build()).getAnswer());
 
         assertTrue(inSyncWithLeader(updatedFile, f1Stub));
         assertTrue(inSyncWithLeader(updatedFile, f2Stub));
@@ -128,7 +134,7 @@ public class MetaDataStoreTwoPhaseTest {
 
     @Test
     void callFollowerDuringCrash(){
-        FileInfo localFile = createNewFile("file2");
+        FileInfo localFile = createNewFile("file4");
 
         FileInfo fileInfo  = leaderStub.readFile(localFile);
         assertEquals(fileInfo.getVersion(), 0);
@@ -156,8 +162,11 @@ public class MetaDataStoreTwoPhaseTest {
 
     private FileInfo createNewFile(String fileName, int version){
 
-        blockStoreStub.storeBlock(Block.newBuilder().setHash("firstBlock").setData(ByteString.copyFrom("abc", Charset.forName("UTF-8"))).build());
-        blockStoreStub.storeBlock(Block.newBuilder().setHash("secondBlock").setData(ByteString.copyFrom("xyz", Charset.forName("UTF-8"))).build());
+        Block b1 = Block.newBuilder().setHash("firstBlock").setData(ByteString.copyFrom("abc", Charset.forName("UTF-8"))).build();
+        Block b2 = Block.newBuilder().setHash("secondBlock").setData(ByteString.copyFrom("xyz", Charset.forName("UTF-8"))).build();
+        if(!blockStoreStub.hasBlock(b1).getAnswer()) blockStoreStub.storeBlock(b1);
+        if(!blockStoreStub.hasBlock(b2).getAnswer()) blockStoreStub.storeBlock(b2);
+
         return FileInfo.newBuilder()
                 .setFilename(fileName)
                 .setVersion(version)
