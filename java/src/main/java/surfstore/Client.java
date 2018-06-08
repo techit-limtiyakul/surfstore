@@ -102,7 +102,7 @@ public final class Client {
                 String hash;
                 if(i<numBlocks-1) hash = toSHA256(Arrays.copyOfRange(data, i*BLOCK_SIZE,  (i+1)*BLOCK_SIZE));
                 else hash= toSHA256(Arrays.copyOfRange(data, i*BLOCK_SIZE,  data.length));
-                localFileBuilder.setBlocklist(i, hash);
+                localFileBuilder.addBlocklist(hash);
                 blocks.put(hash, i);
             }
 
