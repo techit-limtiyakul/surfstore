@@ -298,58 +298,59 @@ public final class MetadataStore {
 
 			if (!this.isLeader) {
 				builder.setResult(WriteResult.Result.NOT_LEADER);
+				builder.setCurrentVersion(currentVersion);
 				responseObserver.onNext(builder.build());
 				responseObserver.onCompleted();
 				return;
 			}
 
 			// Leader Initialize 2PC
-			if (newVersion != currentVersion + 1) {
-				builder.setResult(WriteResult.Result.OLD_VERSION).setCurrentVersion(currentVersion);
-			} else {
-				for (String hash : hashList) {
-					Block block = Block.newBuilder().setHash(hash).build();
-					if (!this.blockStoreStub.hasBlock(block).getAnswer()) {
-						builder.addMissingBlocks(hash);
-						hasNewBlock = true;
-					}
-				}
-
-				if (hasNewBlock) {
-					// blocks not exist in the block store
-					builder.setResult(WriteResult.Result.MISSING_BLOCKS);
-					builder.setCurrentVersion(currentVersion);
+			synchronized (logList) {
+				if (newVersion != currentVersion + 1) {
+					builder.setResult(WriteResult.Result.OLD_VERSION).setCurrentVersion(currentVersion);
 				} else {
-					// append log
-
-					// send append request
-					VoteCounter counter = new VoteCounter();
-					counter.tick();
-					LogMessage.Builder logMsgBuilder = LogMessage.newBuilder().setLogIndex(logList.size()).addLogContent(request);
-					logList.add(request);
-
-					for(NodeInfo node: nodeList) {						
-						sendAppendLog(logMsgBuilder.build(), counter, node);
-					}
-					
-					int waitTime = 0;
-					while(counter.getCounter() * 2 <= nodeList.size() && waitTime < 1000) {
-						try {
-							Thread.sleep(10);
-							waitTime += 10;
-						}
-						catch(Exception e) {
-							logger.log(Level.INFO, "Thread interrupted");
+					for (String hash : hashList) {
+						Block block = Block.newBuilder().setHash(hash).build();
+						if (!this.blockStoreStub.hasBlock(block).getAnswer()) {
+							builder.addMissingBlocks(hash);
+							hasNewBlock = true;
 						}
 					}
 					
-					if(counter.getCounter() * 2 > nodeList.size()) {
-						commitNextLog();
-						builder.setResult(WriteResult.Result.OK);
-						builder.setCurrentVersion(newVersion);
+					if (hasNewBlock) {
+						// blocks not exist in the block store
+						builder.setResult(WriteResult.Result.MISSING_BLOCKS);
+						builder.setCurrentVersion(currentVersion);
+					} else {
+						// send append request
+						VoteCounter counter = new VoteCounter();
+						counter.tick();
+						LogMessage.Builder logMsgBuilder = LogMessage.newBuilder().setLogIndex(logList.size()).addLogContent(request);
+						logList.add(request);
 						
-						for(NodeInfo node: nodeList) {
-							sendCommitLog(CommitMessage.newBuilder().setCommitIndex(lastCommitted).build(), node);
+						for(NodeInfo node: nodeList) {						
+							sendAppendLog(logMsgBuilder.build(), counter, node);
+						}
+						
+						int waitTime = 0;
+						while(counter.getCounter() * 2 <= nodeList.size() && waitTime < 1000) {
+							try {
+								Thread.sleep(10);
+								waitTime += 10;
+							}
+							catch(Exception e) {
+								logger.log(Level.INFO, "Thread interrupted");
+							}
+						}
+						
+						if(counter.getCounter() * 2 > nodeList.size()) {
+							commitNextLog();
+							builder.setResult(WriteResult.Result.OK);
+							builder.setCurrentVersion(newVersion);
+							
+							for(NodeInfo node: nodeList) {
+								sendCommitLog(CommitMessage.newBuilder().setCommitIndex(lastCommitted).build(), node);
+							}
 						}
 					}
 				}
@@ -413,49 +414,51 @@ public final class MetadataStore {
 			int newVersion = request.getVersion();
 
 			WriteResult.Builder builder = WriteResult.newBuilder();
-
+			int currentVersion = getCurrentVersion(request);
+			
 			if (!this.isLeader) {
 				builder.setResult(WriteResult.Result.NOT_LEADER);
+				builder.setCurrentVersion(currentVersion);
 				responseObserver.onNext(builder.build());
 				responseObserver.onCompleted();
 				return;
 			}
 
 			// Leader Initialize 2PC
-			int currentVersion = getCurrentVersion(request);
-
-			if (newVersion != currentVersion + 1) {
-				builder.setResult(WriteResult.Result.OLD_VERSION).setCurrentVersion(currentVersion);
-			} else {
-				FileInfo log = FileInfo.newBuilder().setFilename(request.getFilename()).setVersion(newVersion)
-						.addBlocklist("0").build();
-				// append log
-				// send append request
-				VoteCounter counter = new VoteCounter();
-				counter.tick();
-				LogMessage.Builder logMsgBuilder = LogMessage.newBuilder().setLogIndex(logList.size()).addLogContent(log);
-				logList.add(log);
-
-				for(NodeInfo node: nodeList) {						
-					sendAppendLog(logMsgBuilder.build(), counter, node);
-				}
-				
-				int waitTime = 0;
-				while(counter.getCounter() * 2 <= nodeList.size() && waitTime < 1000) {
-					try {
-						Thread.sleep(10);
-						waitTime += 10;
+			synchronized(logList) {
+				if (newVersion != currentVersion + 1) {
+					builder.setResult(WriteResult.Result.OLD_VERSION).setCurrentVersion(currentVersion);
+				} else {
+					FileInfo log = FileInfo.newBuilder().setFilename(request.getFilename()).setVersion(newVersion)
+							.addBlocklist("0").build();
+					// append log
+					// send append request
+					VoteCounter counter = new VoteCounter();
+					counter.tick();
+					LogMessage.Builder logMsgBuilder = LogMessage.newBuilder().setLogIndex(logList.size()).addLogContent(log);
+					logList.add(log);
+					
+					for(NodeInfo node: nodeList) {						
+						sendAppendLog(logMsgBuilder.build(), counter, node);
 					}
-					catch(Exception e) {
+					
+					int waitTime = 0;
+					while(counter.getCounter() * 2 <= nodeList.size() && waitTime < 1000) {
+						try {
+							Thread.sleep(10);
+							waitTime += 10;
+						}
+						catch(Exception e) {
+							
+						}
+					}
+					
+					if(counter.getCounter() * 2 > nodeList.size()) {
+						commitNextLog();
+						builder.setResult(WriteResult.Result.OK);
+						builder.setCurrentVersion(newVersion);
 						
 					}
-				}
-				
-				if(counter.getCounter() * 2 > nodeList.size()) {
-					commitNextLog();
-					builder.setResult(WriteResult.Result.OK);
-					builder.setCurrentVersion(newVersion);
-					
 				}
 			}
 
