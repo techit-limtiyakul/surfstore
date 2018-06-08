@@ -554,6 +554,7 @@ public final class MetadataStore {
 			if (newLogIndex > expectedLog || !isUp) {
 				// reject log
 				builder.setMostRecentLog(expectedLog - 1);
+				
 			} else {
 				int indexToAppend = expectedLog - newLogIndex;
 				List<FileInfo> newLogs = request.getLogContentList();
@@ -561,6 +562,11 @@ public final class MetadataStore {
 					logList.add(newLogs.get(i));
 				}
 				builder.setMostRecentLog(logList.size() - 1);
+				
+//				int commitVersion = request.getCommitIndex();
+//				while (lastCommitted < commitVersion && logList.size() > commitVersion) {
+//					commitNextLog();
+//				}		
 			}
 			responseObserver.onNext(builder.build());
 			responseObserver.onCompleted();
