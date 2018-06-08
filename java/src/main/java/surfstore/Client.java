@@ -50,6 +50,7 @@ public final class Client {
         metadataChannel.shutdown().awaitTermination(5, TimeUnit.SECONDS);
         blockChannel.shutdown().awaitTermination(5, TimeUnit.SECONDS);
     }
+
     private static Block stringToBlock(String s){
         Block.Builder builder = Block.newBuilder();
 
@@ -62,6 +63,7 @@ public final class Client {
         builder.setHash(toSHA256(s.getBytes(StandardCharsets.UTF_8)));
         return builder.build();
     }
+
     private void ensure(boolean b) {
         if (!b){
             throw new RuntimeException("Assertion failed!");
@@ -86,6 +88,7 @@ public final class Client {
         System.out.println(remoteFile.getVersion()+"");
     }
 
+    //TODO confirm how to handle different formats of file names
     private void callUpload(String fileName){
         FileInfo.Builder localFileBuilder = FileInfo.newBuilder().setFilename(fileName);
         FileInfo remoteFile = metadataStub.getVersion(localFileBuilder.build());
@@ -127,6 +130,7 @@ public final class Client {
     }
 
     //TODO add download optimization
+    //TODO confirm which directory to download file to
     private void callDownload(String fileName){
         FileInfo localFile = FileInfo.newBuilder().setFilename(fileName).build();
         FileInfo remoteFile = metadataStub.readFile(localFile);
@@ -139,7 +143,7 @@ public final class Client {
                     Block b = stringToBlock(hash);
                     ensure(blockStub.hasBlock(b).getAnswer());
                     fos.write(blockStub.getBlock(b).getData().toByteArray());
-                    System.out.println(System.getProperty("user.dir") + fileName);
+                    System.out.println(System.getProperty("user.dir"));
                 }
             } catch (IOException e){
                 logger.severe("Caught IOException: " + e.getMessage());
