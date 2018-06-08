@@ -197,13 +197,15 @@ public final class MetadataStore {
 				while(true) {
 					for(NodeInfo node: nodeList) {
 						LogMessage.Builder builder = LogMessage.newBuilder();
-						if(node.lastLog < logList.size() - 1) {
+						//TODO in the equal case, where everything is up to date, when do we add logIndex?
+ 						if(node.lastLog < logList.size() - 1) {
 							int nextIndex = node.lastLog + 1;
 							builder.setLogIndex(nextIndex);
 							for(int i = nextIndex; i < logList.size(); i++) {
 								builder.addLogContent(logList.get(i));
 							}
 						}
+						builder.setLastCommitIndex(lastCommitted);
 						sendAppendLog(builder.build(), null, node);
 					}
 					try {
@@ -325,7 +327,7 @@ public final class MetadataStore {
 						// send append request
 						VoteCounter counter = new VoteCounter();
 						counter.tick();
-						LogMessage.Builder logMsgBuilder = LogMessage.newBuilder().setLogIndex(logList.size()).addLogContent(request);
+						LogMessage.Builder logMsgBuilder = LogMessage.newBuilder().setLogIndex(logList.size()).addLogContent(request).setLastCommitIndex(lastCommitted);
 						logList.add(request);
 						
 						for(NodeInfo node: nodeList) {						
@@ -561,6 +563,14 @@ public final class MetadataStore {
 					logList.add(newLogs.get(i));
 				}
 				builder.setMostRecentLog(logList.size() - 1);
+			}
+
+			//always commit if you can
+			if(isUp) {
+				int commitVersion = request.getLastCommitIndex();
+				while (lastCommitted < commitVersion && logList.size() > commitVersion) {
+					commitNextLog();
+				}
 			}
 			responseObserver.onNext(builder.build());
 			responseObserver.onCompleted();
